@@ -7,7 +7,8 @@ var schema = new Schema({
     brand: {type: String, required: true},
     sex: {type: String, required: true},
     description: {type: String, required: true},
-    price: {type: Number, required: true}
+    price: {type: Number, required: true},
+    stockQty: {type: Number, required: true}
 });
 
 module.exports = mongoose.model('Product', schema);
