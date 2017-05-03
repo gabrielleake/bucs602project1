@@ -3,6 +3,7 @@ var router = express.Router();
 var Cart = require('../models/cart');
 var Order = require('../models/order');
 var Product = require('../models/product');
+var controller = require('../controllers/shopController');
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -58,6 +59,30 @@ router.get('/shoppingCart', function(req,res,next){
 
 });
 
+// Search the Products in the db on title and description
+router.get('/search', function(req,res,next){
+    var searchString = req.query.searchQuery;
+    Product.find({
+        $or:[
+            {'title': new RegExp(searchString, "i")},
+            {'description':new RegExp(searchString, "i")}
+        ]
+    },
+        // callback function
+        function(err,docs){
+        console.log("docs found...");
+        console.log(docs);
+        var resultMessage = "No Products Found";
+        if(docs.length > 0){
+            resultMessage = docs.length + " product(s) found";
+        }
+        // Display results in groups of 3 to be consistent with current display
+        productGroups = controller.groupProducts(docs, 3);
+        res.render('shop/index', { title: 'Shopping Cart', products: productGroups,
+            successMsg: resultMessage, noMessage: false, queryString: searchString });
+        })
+});
+
 router.get('/checkout', isLoggedIn, function(req, res, next){
 
     if (!req.session.shoppingCart) {
@@ -88,34 +113,79 @@ router.post('/checkout', isLoggedIn, function(req,res,next){
         description: "Test" + req.body.name
     }, function(err, charge) {
         if (err){
-        req.flash('error', err.message);
-        return res.redirect('/checkout');
+            req.flash('error', err.message);
+            return res.redirect('/checkout');
         }
-        // Save a new order to the db
-        var order = new Order({
-            cart: cart,
-            user: req.user, // Passport stores user in request when a user signs in
-            address: req.body.address, // express stores values sent w/ POST request to req.body
-            name: req.body.name,
-            paymentId: charge.id // stripe docs - charge contains "id" field for each charge made
-        });
-        console.log(order);
-        order.save(function(err, results){
-            console.log('order save attempt...');
-            if (err){
-                console.log('order save failed');
+        var all_items_ids = [];
+        for (var item_id in cart.items) {
+            if (cart.items.hasOwnProperty(item_id)) {
+                all_items_ids.push(item_id);
+            }
+        }
+        Product.find({_id:{$in : all_items_ids}}, function(err, docs){
+            if(err){
+                console.log('Item stock update failed');
+                req.flash('error', err.message);
                 console.log(err);
                 return res.redirect('/checkout');
             }
-            // We store a single message on the flash storage for success
-            req.flash('success', 'Purchase complete!');
-            // clear session shopping cart since the purchase has been completed
-            req.session.shoppingCart = null;
-            // send the user back to the home page
-            res.redirect('/');
+
+            // check if the items are in stock first
+            for(var i=0; i<docs.length; i++){
+                var doc = docs[i];
+                if(doc.stockQty < cart.items[doc.id].qty){
+                    req.flash('error', 'Sorry! '+doc.title+' does not have sufficient stock.');
+                    return res.redirect('/checkout');
+                }
+            }
+
+            var numberOfSaves=0;
+            for(var i=0; i<docs.length; i++){
+                var doc = docs[i];
+                doc.stockQty = doc.stockQty - cart.items[doc.id].qty;
+                doc.save(function(err){
+                    if(err){
+                        console.log('Item stock update failed');
+                        req.flash('error', err.message);
+                        console.log(err);
+                        return res.redirect('/checkout');
+                    }
+                    numberOfSaves++;
+                    if(numberOfSaves==docs.length){
+                        saveOrder();
+                    }
+                });
+            }
         });
+
+        var saveOrder = function(){
+            // Save a new order to the db
+            var order = new Order({
+                cart: cart,
+                user: req.user, // Passport stores user in request when a user signs in
+                address: req.body.address, // express stores values sent w/ POST request to req.body
+                name: req.body.name,
+                paymentId: charge.id // stripe docs - charge contains "id" field for each charge made
+            });
+            console.log(order);
+            order.save(function(err, results){
+                console.log('order save attempt...');
+                if (err){
+                    console.log('order save failed');
+                    console.log(err);
+                    return res.redirect('/checkout');
+                }
+                // We store a single message on the flash storage for success
+                req.flash('success', 'Purchase complete!');
+                // clear session shopping cart since the purchase has been completed
+                req.session.shoppingCart = null;
+                // send the user back to the home page
+                res.redirect('/');
+            });
+        }
     });
 });
+
 module.exports = router;
 
 // Function to protect routes to ensure user is logged in

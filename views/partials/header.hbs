@@ -16,6 +16,16 @@
         <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
             <ul class="nav navbar-nav navbar-right">
                 <li>
+                    <form class="navbar-form" action="/search" method="GET">
+                        <div class="input-group">
+                            <input type="text" class="form-control" name="searchQuery" placeholder="Search items...">
+                            <span class="input-group-btn">
+                                <button class="btn btn-default" type="submit">Search</button>
+                            </span>
+                        </div>
+                    </form>
+                </li>
+                <li>
                     <a href="/shoppingCart/"><i class="fa fa-shopping-cart" aria-hidden="true"></i> Shopping Cart
                     <span class="badge">{{userSession.shoppingCart.cartQty}}</span>
                     </a>
